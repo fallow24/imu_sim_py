@@ -11,7 +11,7 @@ Simulates the accelerometer and gyroscope readings that an IMU would produce whi
 
 ## How to use
 
-Have a look at "demo_simulate_imu.py". 
+Have a look at `demo_simulate_imu.py`. 
 Install dependencies with pip.
-If you can not install rosbag with pip directly, try installing "bagpy".
+If you can not install rosbag with pip directly, try installing `bagpy`.
 Somehow this will install rosbag correctly.
