@@ -7,8 +7,10 @@ def movement_readings(poses):
     Returns: numpy array of shape (N, 3) with linear acceleration in the body frame.
     """
     N = poses.shape[0]
+    if N < 2:
+        raise ValueError("At least two poses are required to compute IMU readings.")
+    
     acc_readings = np.zeros((N, 3))
-    dt = np.diff(poses[:, 0])
     
     # Compute velocities in world frame
     vel = np.zeros((N, 3))
@@ -52,9 +54,14 @@ def movement_readings(poses):
         acc_body = R.T @ acc_world[i]
         acc_readings[i] = acc_body
 
-    # Assume to have initial acceleration for continuity
-    acc_readings[0] = acc_readings[2]
-    acc_readings[1] = acc_readings[2]
+    # The first and last two arent meaningful due to central differences,
+    # so we set them to the nearest valid reading for continuity.
+    if N > 2:
+        acc_readings[0] = acc_readings[2]
+        acc_readings[1] = acc_readings[2]
+        acc_readings[-2] = acc_readings[-3]
+        acc_readings[-1] = acc_readings[-2]
+
     return acc_readings
 
 def gravity_readings(poses):
@@ -98,5 +105,43 @@ def gravity_readings(poses):
 
     return np.array(acc_readings)
 
-def readings(poses):
-    return gravity_readings(poses) + movement_readings(poses)
+def readings(poses, 
+             bias=np.array([0, 0, 0]), 
+             random_walk=0.00002, 
+             noise_density=0.00098,
+             saturation=8*9.80665,  # 8g saturation
+             random_seed=None):
+    """
+    Returns simulated accelerometer readings (gravity + movement) with bias and noise.
+    Noise is modelled as white Gaussian, bias is modelled as random walk, according to kalibr:
+    https://github.com/ethz-asl/kalibr/wiki/IMU-Noise-Model
+    Parameters:
+        poses: Nx7 pose array [timestamp, x, y, z, yaw, pitch, roll]
+        bias: 1x3 array constant bias (m/s^2)
+        random_walk: Accelerometer random walk (m/s^3/sqrt(Hz))
+        noise_density: standard deviation of measurement noise (m/s^2/sqrt(Hz))
+        saturation: maximum absolute value of accelerometer readings (m/s^2)
+        random_seed: for reproducibility
+    Returns: numpy array of shape (N, 3) with linear accelerations [ax, ay, az] in m/s^2 in the body frame.
+    """
+    N = poses.shape[0]
+    if N < 2:
+        raise ValueError("At least two poses are required to compute IMU readings.") 
+
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    acc = gravity_readings(poses) + movement_readings(poses)
+    N, D = acc.shape
+
+    # Uses pose timestamps to calculate dts
+    dt = np.diff(poses[:, 0], prepend=(poses[0,0] - poses[1,0]))
+
+    # Measurement noise (white Gaussian)
+    noise = (noise_density / np.sqrt(dt))[:, None] * np.random.normal(0, 1, size=(N, D)) 
+
+    # Bias random walk (brownian motion) 
+    drift = random_walk * np.sqrt(dt)[:, None] * np.cumsum(np.random.normal(0, 1, size=(N, D)), axis=0)
+
+    # Clip to saturation limits
+    return np.clip(acc + bias + drift + noise, -saturation, saturation)

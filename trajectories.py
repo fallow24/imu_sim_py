@@ -17,13 +17,13 @@ def generate_trochoid_forward(duration, fs, R, r, omega):
     # Trochoid equations for a ball rolling along x-y plane
     theta = omega * timestamps
     x = R * theta - r * np.sin(theta)
-    y = R - r * np.cos(theta)
-    z = 0 * theta  # stays on the floor
+    y = 0 * theta  # stays on the floor
+    z = R - r * np.cos(theta)
 
     # Orientation: yaw follows the rolling direction, pitch and roll from ball rotation
-    yaw = np.rad2deg(theta) % 360
-    pitch = np.zeros_like(theta)
-    roll = np.rad2deg(theta) % 360
+    yaw = np.zeros_like(theta)
+    pitch = np.rad2deg(theta) % 360
+    roll = np.zeros_like(theta)
 
     # Stack into poses: [timestamp, x, y, z, yaw, pitch, roll]
     poses = np.column_stack((timestamps, x, y, z, yaw, pitch, roll))
@@ -36,8 +36,7 @@ def generate_rotating_disc(duration, fs, imu_offset, omega):
     Parameters:
         duration: How long the trajectory should be in seconds.
         fs: How many samples per second.
-        disc_radius: Radius of the disc.
-        imu_offset: Offset of IMU from disc center (<= disc_radius).
+        imu_offset: Offset of IMU from disc center.
         omega: Angular velocity of the disc (rad/s).
     """
     N = int(duration * fs)
@@ -150,4 +149,28 @@ def generate_lift_motion(duration, fs, lift_height):
     roll = np.zeros_like(z)
 
     poses = np.column_stack((timestamps, x, y, z, yaw, pitch, roll))
+    return poses
+
+def generate_stationary_pose(duration, fs, x=0.0, y=0.0, z=0.0, yaw=0.0, pitch=0.0, roll=0.0):
+    """
+    Generates a stationary IMU trajectory (no movement, no rotation).
+    Parameters:
+        duration: Duration in seconds.
+        fs: Sampling frequency (Hz).
+        x, y, z: Fixed position coordinates.
+        yaw, pitch, roll: Fixed orientation (degrees).
+    Returns:
+        poses: [timestamp, x, y, z, yaw, pitch, roll]
+    """
+    N = int(duration * fs)
+    timestamps = np.linspace(0, duration, N)
+    poses = np.column_stack((
+        timestamps,
+        np.full(N, x),
+        np.full(N, y),
+        np.full(N, z),
+        np.full(N, yaw),
+        np.full(N, pitch),
+        np.full(N, roll)
+    ))
     return poses

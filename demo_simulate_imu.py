@@ -1,30 +1,26 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# internal
+# internalw
 import trajectories as trj
 import accelerometer as accel
 import gyroscope as gyro
-from bag2pose import load_rosbag_poses # if you need ROS1 bag support
 from utils import *
+# (optional) if you require ROS1 bag support
+from bag2pose import load_rosbag_poses
 
-# Setup simulation
+## Setup simulation
+
 # Example poses: [timestamp, x, y, z, yaw, pitch, roll]
-# Generate a 3D trochoid trajectory for a ball rolling without slipping
 duration = 10.0  # seconds
-fs = 100         # Hz (sampling time)
-N = int(duration * fs)                  
-poses = trj.generate_trochoid_forward(duration, fs, 0.29, 0.14, 6)
-# poses = trj.generate_rotating_disc(10, 100, 0.5, 12)
-# poses = trj.generate_lift_motion(10, 100, 10)
+fs = 200     # Hz (sampling time)     
+poses = trj.generate_stationary_pose(duration=10, fs=200);          
+poses = trj.generate_trochoid_forward(duration, fs, 0.145, 0.13, 6)
+#poses = load_rosbag_poses("/home/fabi/Documents/Bagfiles/Test_accel_2025-05-23.bag", "/lkf/pose", tend=45)
 
-## Example load real world trajectory 
-# poses = trj.load_rosbag_poses("/home/fabi/Documents/Bagfiles/Test_accel_2025-05-23.bag", "/lkf/pose", tend=45)
-## This usually needs filtering before calculating IMU readings, which is based on derivatives.
-# poses = savgol_filter(poses, window_length=11, polyorder=2, axis=0)
-
-acc = accel.readings(poses) # = accel.movement_readings(poses) + accel.gravity_readings(poses)
+acc = accel.readings(poses)
 gyr = gyro.readings(poses)
+gyr = np.rad2deg(gyr)  # convert to deg/s
 
 ## FIGURE 1
 
@@ -54,14 +50,18 @@ axs[1].grid(True)
 
 ## FIGURE 2
 
-# Draw the trajectory as a red line
+## Draw the trajectory as a red line
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot(111, projection='3d')
-ax.plot(poses[:, 1], poses[:, 2], poses[:, 3], 'r-', label='Trajectory')
+ax.plot(poses[:, 1], poses[:, 2], poses[:, 3], 'b--', label='Trajectory')
+# Plot starting pose as a green dot
+ax.scatter(poses[0, 1], poses[0, 2], poses[0, 3], c='g', s=100, label='Start Position')
+# Plot the end pose as a blue dot
+ax.scatter(poses[-1, 1], poses[-1, 2], poses[-1, 3], c='r', s=100, label='End Position')
 ax.set_xlabel('X (m)')
 ax.set_ylabel('Y (m)')
 ax.set_zlabel('Z (m)')
-ax.set_title('3D Trajectory with Pose Coordinate Systems')
+ax.set_title('3D Trajectory')
 ax.legend()
 
 # Show all the figures
