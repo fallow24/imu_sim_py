@@ -65,5 +65,10 @@ plt.show()
 
 The bias and noise models are implemented according to [kalibr](https://github.com/ethz-asl/kalibr/wiki/IMU-Noise-Model). You can define accelerometer and gyroscope sensor random walk and noise densities.
 If you do not explicitly state any bias, random walk, or noise density in the `readings(...)` function (as in the example given above), the program will assume that there is no bias (all elements are zero). 
-Random walk and noise densities will default to behaving like a MPU-6050 sensor (e.g., Gyro Noise Density = 0.005 rad/s/√Hz, Gyro Random Walk = 0.0002 rad/s²/√Hz, 	Accel Noise Density = 0.00098 m/s²/√Hz, and	Accel Random Walk = 0.00002 m/s³/√Hz)
+Random walk and noise densities will default to behaving like a MPU-6050 sensor (e.g., Gyro Noise Density = 0.005 rad/s/√Hz, Gyro Random Walk = 0.0002 rad/s²/√Hz, Accel Noise Density = 0.00098 m/s²/√Hz, and Accel Random Walk = 0.00002 m/s³/√Hz)
+You can obtain the "perfect" sensor by setting all these values to zero, e.g.:
+```python
+acc = accel.readings(poses, random_walk=0, noise_density=0)
+gyr = gyro.readings(poses, random_walk=0, noise_density=0)
+```
 		 
