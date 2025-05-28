@@ -20,7 +20,7 @@ def generate_trochoid_forward(duration, fs, R, r, omega):
     y = 0 * theta  # stays on the floor
     z = R - r * np.cos(theta)
 
-    # Orientation: yaw follows the rolling direction, pitch and roll from ball rotation
+    # Orientation: yaw follows the pitching direction
     yaw = np.zeros_like(theta)
     pitch = np.rad2deg(theta) % 360
     roll = np.zeros_like(theta)

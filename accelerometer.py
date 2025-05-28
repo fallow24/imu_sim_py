@@ -4,7 +4,7 @@ def movement_readings(poses):
     """
     Calculate accelerometer readings due to the IMU's own 3D movement (linear acceleration),
     ignoring gravity. Each pose: [timestamp, x, y, z, yaw, pitch, roll] (angles in degrees).
-    Returns: numpy array of shape (N, 3) with linear acceleration in the body frame.
+    Returns: numpy array of shape (N, 4) with [timestamp, ax, ay, az] in the body frame.
     """
     N = poses.shape[0]
     if N < 2:
@@ -62,13 +62,14 @@ def movement_readings(poses):
         acc_readings[-2] = acc_readings[-3]
         acc_readings[-1] = acc_readings[-2]
 
-    return acc_readings
+    # Add timestamps as first column
+    return np.column_stack((poses[:, 0], acc_readings))
 
 def gravity_readings(poses):
     """
     Calculate accelerometer readings due to gravity for a sequence of 6-DoF poses.
     Each pose: [timestamp, x, y, z, yaw, pitch, roll] (angles in degrees).
-    Returns: numpy array of shape (N, 3) with gravity in the body frame.
+    Returns: numpy array of shape (N, 4) with [timestamp, gx, gy, gz] in the body frame.
     """
     g = 9.80665  # gravity magnitude in m/s^2
     gravity_ned = np.array([0, 0, g])  # gravity in NED frame (down is positive)
@@ -103,7 +104,8 @@ def gravity_readings(poses):
         gravity_body = R.T @ gravity_ned  # transpose for NED->body
         acc_readings.append(gravity_body)
 
-    return np.array(acc_readings)
+    acc_readings = np.array(acc_readings)
+    return np.column_stack((poses[:, 0], acc_readings))
 
 def readings(poses, 
              bias=np.array([0, 0, 0]), 
@@ -122,7 +124,7 @@ def readings(poses,
         noise_density: standard deviation of measurement noise (m/s^2/sqrt(Hz))
         saturation: maximum absolute value of accelerometer readings (m/s^2)
         random_seed: for reproducibility
-    Returns: numpy array of shape (N, 3) with linear accelerations [ax, ay, az] in m/s^2 in the body frame.
+    Returns: numpy array of shape (N, 4) with [timestamp, ax, ay, az] in m/s^2 in the body frame.
     """
     N = poses.shape[0]
     if N < 2:
@@ -131,7 +133,7 @@ def readings(poses,
     if random_seed is not None:
         np.random.seed(random_seed)
 
-    acc = gravity_readings(poses) + movement_readings(poses)
+    acc = gravity_readings(poses)[:, 1:] + movement_readings(poses)[:, 1:]
     N, D = acc.shape
 
     # Uses pose timestamps to calculate dts
@@ -143,5 +145,7 @@ def readings(poses,
     # Bias random walk (brownian motion) 
     drift = random_walk * np.sqrt(dt)[:, None] * np.cumsum(np.random.normal(0, 1, size=(N, D)), axis=0)
 
-    # Clip to saturation limits
-    return np.clip(acc + bias + drift + noise, -saturation, saturation)
+    acc_total = np.clip(acc + bias + drift + noise, -saturation, saturation)
+    
+    # Add timestamps as first column
+    return np.column_stack((poses[:, 0], acc_total))
