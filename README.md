@@ -36,21 +36,21 @@ gyr = gyro.readings(poses)
 gyr = np.rad2deg(gyr)  # convert to deg/s
 
 # Plot the accelerometer data using timestamp as x axis
-timestamps = poses[:, 0]
+timestamps = acc[:, 0] # same stamps as gyr and poses
 fig, axs = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 # Accelerometer plot
 g = 9.80665
-axs[0].plot(timestamps, acc[:, 0]/g, label='Accel X')
-axs[0].plot(timestamps, acc[:, 1]/g, label='Accel Y')
-axs[0].plot(timestamps, acc[:, 2]/g, label='Accel Z')
+axs[0].plot(timestamps, acc[:, 1]/g, label='Accel X')
+axs[0].plot(timestamps, acc[:, 2]/g, label='Accel Y')
+axs[0].plot(timestamps, acc[:, 3]/g, label='Accel Z')
 axs[0].set_ylabel('Acceleration (g)')
 axs[0].set_title('Simulated Accelerometer Readings (Gravity + Movement)')
 axs[0].legend()
 axs[0].grid(True)
 # Gyroscope plot
-axs[1].plot(timestamps, gyr[:, 0], label='Gyro X')
-axs[1].plot(timestamps, gyr[:, 1], label='Gyro Y')
-axs[1].plot(timestamps, gyr[:, 2], label='Gyro Z')
+axs[1].plot(timestamps, gyr[:, 1], label='Gyro X')
+axs[1].plot(timestamps, gyr[:, 2], label='Gyro Y')
+axs[1].plot(timestamps, gyr[:, 3], label='Gyro Z')
 axs[1].set_xlabel('Time (s)')
 axs[1].set_ylabel('Angular Rate (deg/s)')
 axs[1].set_title('Simulated Gyroscope Readings')
