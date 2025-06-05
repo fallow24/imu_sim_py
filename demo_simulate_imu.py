@@ -14,22 +14,29 @@ from bag2pose import load_rosbag_poses
 ## Setup simulation
 
 # Example poses: [timestamp, x, y, z, yaw, pitch, roll]
-duration = 10.0  # seconds
+duration = 10  # seconds
 fs = 125    # Hz (sampling time)     
 
-poses = trj.generate_rotating_disc(duration, fs, 0.13, 6)  # Generate a rotating disc trajectory
+# SOME EXAMPLE TRAJECTORIES
 #poses = trj.generate_lift_motion(duration, fs, 10)
-#poses = trj.generate_trochoid_forward(duration, fs, 0.145, 0.13, 6)
+#poses = trj.generate_rotating_disc(duration, fs, 0.13, 6)  # Generate a rotating disc trajectory
+#poses = trj.generate_trochoid_curved(duration, fs, 0.145, 0.13, 6, turn_period=2, turn_angle_deg=100)
 #poses = load_rosbag_poses("/home/fabi/Documents/Bagfiles/Test_accel_2025-05-23.bag", "/lkf/pose", tend=45)
+poses = trj.generate_trochoid_forward(duration, fs, 0.145, 0.13, 6)  # Generate a trochoid trajectory
+initial_quat = R.from_euler('zyx', poses[0, 4:7], degrees=True).as_quat()  # [x, y, z, w]
 
-#acc = accel.gravity_readings(poses)  # shape (N, 4): [timestamp, ax, ay, az]
-acc = accel.readings(poses, random_seed=43)#, random_walk=0, noise_density=0)  # shape (N, 4): [timestamp, ax, ay, az]
-gyr = gyro.readings(poses, random_seed=43)#, random_walk=0, noise_density=0)   # shape (N, 4): [timestamp, gx, gy, gz]
+#acc = accel.gravity_readings(poses)
+acc = accel.readings(poses, random_seed=42)
+gyr = gyro.readings(poses, random_seed=43, bias=np.array([0.01, -0.02, 0.03]))
 
-# Apply complementary filter to estimate orientation
-quats = filt.imujasper(acc, gyr, gain=0.02, alpha=0.8, autogain=0.01, gain_min=0.01)
-#quats = filt.complementary(acc, gyr, alpha=0.8)  # shape (N, 5): [timestamp, x, y, z, w]
-#quats = filt.imujasper(acc, gyr, gain=0, alpha=0.8, autogain=0, gain_min=0)  # shape (N, 5): [timestamp, x, y, z, w]
+# COMPARISON OF WHAT RUNS ON THE PROTOTYPE (BAD ACTUALLY)
+# quats = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, initial_quat=initial_quat) 
+# quats2 = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, t_imu=np.array([0, 0, 0.13]), initial_quat=initial_quat) 
+
+# COMPARISON OF SIMPLE COMPLEMENTARY FILTER
+quats = filt.imujasper(acc, gyr, gain=0.0, alpha=0.02, autogain=0, gain_min=0, initial_quat=initial_quat) 
+quats2 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.02, autogain=0, gain_min=0, t_imu=np.array([0,0,0.13]), initial_quat=initial_quat) 
+
 ## FIGURE 1
 
 # Plot the accelerometer data using timestamp as x axis
@@ -75,7 +82,14 @@ ax.legend()
 ## FIGURE 3
 # Convert estimated quaternions to euler angles (yaw, pitch, roll)
 # quats: (N, 5) [timestamp, x, y, z, w]
-est_rot = R.from_quat(quats[:, 1:5])
+# Ensure quaternion sign consistency for error calculation and plotting
+est_quat = quats[:, 1:5]
+gt_quat = R.from_euler('zyx', poses[:, 4:7], degrees=True).as_quat()
+for i in range(len(est_quat)):
+    if np.dot(est_quat[i], gt_quat[i]) < 0:
+        est_quat[i] = -est_quat[i]
+
+est_rot = R.from_quat(est_quat)
 est_euler = est_rot.as_euler('zyx', degrees=True)  # yaw, pitch, roll
 
 # Ground truth euler angles from poses (in degrees)
@@ -103,11 +117,11 @@ gt_pitch = (gt_euler[:, 1] + 180) % 360 - 180
 fig3, axs3 = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
 # Plot yaw, pitch, roll (estimated and ground truth)
-axs3[0].plot(poses[:, 0], est_yaw, label='Yaw (est)')
-axs3[0].plot(poses[:, 0], est_pitch, label='Pitch (est)')
-axs3[0].plot(poses[:, 0], est_roll, label='Roll (est)')
-axs3[0].plot(poses[:, 0], gt_yaw, 'k--', label='Yaw (GT)')
-axs3[0].plot(poses[:, 0], gt_pitch, 'r--', label='Pitch (GT)')
+axs3[0].plot(poses[:, 0], est_yaw, 'r', label='Yaw (est)')
+axs3[0].plot(poses[:, 0], est_pitch, 'g', label='Pitch (est)')
+axs3[0].plot(poses[:, 0], est_roll, 'b', label='Roll (est)')
+axs3[0].plot(poses[:, 0], gt_yaw, 'r--', label='Yaw (GT)')
+axs3[0].plot(poses[:, 0], gt_pitch, 'g--', label='Pitch (GT)')
 axs3[0].plot(poses[:, 0], gt_roll, 'b--', label='Roll (GT)')
 axs3[0].set_ylabel('Angle (deg)')
 axs3[0].set_title('Estimated vs Ground Truth Yaw, Pitch, Roll')
@@ -115,11 +129,54 @@ axs3[0].legend()
 axs3[0].grid(True)
 
 # Compute rotation error (angle between estimated and ground truth orientation)
-gt_rot = R.from_euler('zyx', gt_euler, degrees=True)
-rot_diff = gt_rot.inv() * est_rot
-rot_err_deg = np.abs(rot_diff.magnitude()) * 180 / np.pi  # rotation angle in degrees
+# Construct delta rotation, convert to angle-axis, and use the angle as the error
+rot_err_deg = np.zeros(len(est_quat))
+for i in range(len(est_quat)):
+    # Align quaternion signs
+    if np.dot(est_quat[i], gt_quat[i]) < 0:
+        q_est = -est_quat[i]
+    else:
+        q_est = est_quat[i]
+    q_gt = gt_quat[i]
+    # Build delta rotation
+    r_est = R.from_quat(q_est)
+    r_gt = R.from_quat(q_gt)
+    delta_rot = r_gt.inv() * r_est
+    # Angle-axis: use the angle as the error
+    rot_err_deg[i] = np.abs(delta_rot.magnitude()) * 180 / np.pi
 
-axs3[1].plot(poses[:, 0], rot_err_deg, label='Rotation Error')
+# Set very small errors to zero for plotting clarity
+rot_err_deg[rot_err_deg < 1e-8] = 0.0
+
+# Compute rotation error for quats2 (angle between estimated and ground truth orientation)
+est_quat2 = quats2[:, 1:5]
+# Ensure quaternion sign consistency for error calculation and plotting
+for i in range(len(est_quat2)):
+    if np.dot(est_quat2[i], gt_quat[i]) < 0:
+        est_quat2[i] = -est_quat2[i]
+
+rot_err_deg2 = np.zeros(len(est_quat2))
+for i in range(len(est_quat2)):
+    # Align quaternion signs
+    if np.dot(est_quat2[i], gt_quat[i]) < 0:
+        q_est2 = -est_quat2[i]
+    else:
+        q_est2 = est_quat2[i]
+    q_gt = gt_quat[i]
+    # Build delta rotation
+    r_est2 = R.from_quat(q_est2)
+    r_gt = R.from_quat(q_gt)
+    delta_rot2 = r_gt.inv() * r_est2
+    # Angle-axis: use the angle as the error
+    rot_err_deg2[i] = np.abs(delta_rot2.magnitude()) * 180 / np.pi
+
+# Set very small errors to zero for plotting clarity
+rot_err_deg2[rot_err_deg2 < 1e-8] = 0.0
+
+# Plot both errors in the lower subplot
+axs3[1].plot(poses[:, 0], rot_err_deg, 'b', label='Rotation Error (no compensation)')
+axs3[1].plot(poses[:, 0], rot_err_deg2, 'r--', label='Rotation Error (with compensation)')
+axs3[1].plot(poses[:, 0], rot_err_deg - rot_err_deg2, 'g-.', label='Improvement')
 axs3[1].set_xlabel('Time (s)')
 axs3[1].set_ylabel('Error (deg)')
 axs3[1].set_title('Rotation Error (Angle between estimated and ground truth)')

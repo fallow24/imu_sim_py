@@ -6,7 +6,8 @@ def readings(poses,
              random_walk=0.0002, 
              noise_density=0.005, 
              saturation=2000*3.14159/180, # 2000 deg/s saturation
-             random_seed=None):
+             random_seed=None,
+             scale=1.0):
     """
     Returns simulated gyroscope readings (angular velocity in body frame) with bias and noise.
     Noise is modelled as white Gaussian, bias is modelled as random walk, according to kalibr:
@@ -44,9 +45,9 @@ def readings(poses,
 
     # The first and last two aren't meaningful due to central differences,
     # so we set them to the nearest valid reading for continuity.
-    if N > 2:
-        gyro[-2] = gyro[-3]
-        gyro[-1] = gyro[-2]
+    # if N > 2:
+    #     gyro[-2] = gyro[-3]
+    #     gyro[-1] = gyro[-2]
 
     # Uses pose timestamps to calculate dts
     dt = np.diff(poses[:, 0], prepend=(poses[0,0] - poses[1,0]))
@@ -58,7 +59,7 @@ def readings(poses,
     # Bias random walk (brownian motion) 
     drift = random_walk * np.sqrt(dt)[:, None] * np.cumsum(np.random.normal(0, 1, size=(N, D)), axis=0)
 
-    gyro_total = np.clip(gyro + bias + drift + noise, -saturation, saturation)
+    gyro_total = np.clip(scale*gyro + bias + drift + noise, -saturation, saturation)
 
     # Add timestamps as first column
     return np.column_stack((poses[:, 0], gyro_total))

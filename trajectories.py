@@ -29,6 +29,110 @@ def generate_trochoid_forward(duration, fs, R, r, omega):
     poses = np.column_stack((timestamps, x, y, z, yaw, pitch, roll))
     return poses
 
+def generate_trochoid_curved(duration, fs, R, r, omega, turn_period=5.0, turn_angle_deg=45):
+    """
+    Generates a trochoid trajectory for a ball rolling on a floor, but with periodic left/right turns.
+    The ball's heading (yaw) oscillates sinusoidally, causing the ball to curve left and right as it rolls.
+    Parameters:
+        duration: Duration in seconds.
+        fs: Samples per second.
+        R: Radius of the rolling ball.
+        r: Offset from ball center.
+        omega: Rolling angular velocity (rad/s).
+        turn_period: Period (s) of a full left-right-left turn cycle.
+        turn_angle_deg: Maximum yaw angle left/right (degrees).
+    Returns:
+        poses: [timestamp, x, y, z, yaw, pitch, roll]
+    """
+    N = int(duration * fs)
+    timestamps = np.linspace(0, duration, N)
+
+    # Yaw oscillates sinusoidally to simulate left/right turns
+    turn_angle_rad = np.deg2rad(turn_angle_deg)
+    yaw = turn_angle_rad * np.sin(2 * np.pi * timestamps / turn_period)  # radians
+
+    # Integrate yaw rate to get heading at each time step
+    heading = np.cumsum(np.gradient(yaw, timestamps)) / fs  # radians
+
+    # Trochoid equations, but now the heading changes
+    theta = omega * timestamps
+    x = np.zeros(N)
+    y = np.zeros(N)
+    for i in range(1, N):
+        # Step forward in the current heading direction
+        dx = (R * (theta[i] - theta[i-1]) - r * (np.sin(theta[i]) - np.sin(theta[i-1]))) * np.cos(heading[i])
+        dy = (R * (theta[i] - theta[i-1]) - r * (np.sin(theta[i]) - np.sin(theta[i-1]))) * np.sin(heading[i])
+        x[i] = x[i-1] + dx
+        y[i] = y[i-1] + dy
+    z = R - r * np.cos(theta)
+
+    # Orientation: yaw follows the heading, pitch follows theta, roll is zero
+    yaw_deg = np.rad2deg(heading)
+    pitch = np.rad2deg(theta) % 360
+    roll = np.zeros_like(theta)
+
+    poses = np.column_stack((timestamps, x, y, z, yaw_deg, pitch, roll))
+    return poses
+
+def generate_trochoid_curved_extr(duration, fs, R, offset_vec, omega, turn_period=5.0, turn_angle_deg=45):
+    """
+    Generates a trochoid trajectory for a ball rolling on a floor, but with periodic left/right turns,
+    and allows for an arbitrary 3D offset of the IMU sensor from the ball center.
+    Parameters:
+        duration: Duration in seconds.
+        fs: Samples per second.
+        R: Radius of the rolling ball.
+        offset_vec: 3D numpy array, offset of the IMU from the ball center [x, y, z] in the ball's local frame.
+        omega: Rolling angular velocity (rad/s).
+        turn_period: Period (s) of a full left-right-left turn cycle.
+        turn_angle_deg: Maximum yaw angle left/right (degrees).
+    Returns:
+        poses: [timestamp, x, y, z, yaw, pitch, roll]
+    """
+    N = int(duration * fs)
+    timestamps = np.linspace(0, duration, N)
+
+    # Yaw oscillates sinusoidally to simulate left/right turns
+    turn_angle_rad = np.deg2rad(turn_angle_deg)
+    yaw = turn_angle_rad * np.sin(2 * np.pi * timestamps / turn_period)  # radians
+
+    # Integrate yaw rate to get heading at each time step
+    heading = np.cumsum(np.gradient(yaw, timestamps)) / fs  # radians
+
+    # Trochoid equations for the ball center (no offset)
+    theta = omega * timestamps
+    x = np.zeros(N)
+    y = np.zeros(N)
+    for i in range(1, N):
+        dx = (R * (theta[i] - theta[i-1])) * np.cos(heading[i])
+        dy = (R * (theta[i] - theta[i-1])) * np.sin(heading[i])
+        x[i] = x[i-1] + dx
+        y[i] = y[i-1] + dy
+    z = R * np.ones(N)
+
+    # Now apply the full 3D offset by rotating offset_vec at each time step
+    imu_x = np.zeros(N)
+    imu_y = np.zeros(N)
+    imu_z = np.zeros(N)
+    for i in range(N):
+        # Orientation: yaw follows the heading, pitch follows theta, roll is zero
+        yaw_i = heading[i]
+        pitch_i = theta[i]
+        roll_i = 0.0
+        # Rotation: first roll, then pitch, then yaw (ZYX)
+        rot = R.from_euler('zyx', [yaw_i, pitch_i, roll_i])
+        offset_global = rot.apply(offset_vec)
+        imu_x[i] = x[i] + offset_global[0]
+        imu_y[i] = y[i] + offset_global[1]
+        imu_z[i] = z[i] + offset_global[2]
+
+    yaw_deg = np.rad2deg(heading)
+    pitch = np.rad2deg(theta) % 360
+    roll = np.zeros_like(theta)
+
+    poses = np.column_stack((timestamps, imu_x, imu_y, imu_z, yaw_deg, pitch, roll))
+    return poses
+
 def generate_rotating_disc(duration, fs, imu_offset, omega):
     """
     Generates a sample IMU trajectory for an IMU mounted on a rotating disc.

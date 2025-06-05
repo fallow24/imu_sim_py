@@ -49,3 +49,11 @@ def _quat_multiply(q, r):
         w1*z2 + x1*y2 - y1*x2 + z1*w2,
         w1*w2 - x1*x2 - y1*y2 - z1*z2
     ])
+
+def skew(w):
+    wx, wy, wz = w
+    return np.array([
+        [0, -wz, wy],
+        [wz, 0, -wx],
+        [-wy, wx, 0]
+    ])
