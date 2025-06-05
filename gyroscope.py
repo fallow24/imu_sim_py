@@ -43,12 +43,6 @@ def readings(poses,
         gyro[i] = omega
     gyro[0] = gyro[1]  # first value copy for continuity
 
-    # The first and last two aren't meaningful due to central differences,
-    # so we set them to the nearest valid reading for continuity.
-    # if N > 2:
-    #     gyro[-2] = gyro[-3]
-    #     gyro[-1] = gyro[-2]
-
     # Uses pose timestamps to calculate dts
     dt = np.diff(poses[:, 0], prepend=(poses[0,0] - poses[1,0]))
 
