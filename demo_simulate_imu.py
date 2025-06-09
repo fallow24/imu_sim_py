@@ -37,16 +37,20 @@ poses = trj.generate_trochoid(omega_vec=omega_input, R_ball=R_sphere, offset_vec
 initial_quat = R.from_euler('zyx', poses[0, 4:7], degrees=True).as_quat()  # [x, y, z, w]
 
 #acc = accel.gravity_readings(poses)
-acc = accel.readings(poses, random_seed=42)
-gyr = gyro.readings(poses, random_seed=43, bias=np.array([0.01, -0.02, 0.015]))
+acc = accel.readings(poses)
+gyr = gyro.readings(poses, bias=np.array([0.01, -0.02, 0.015]))
 
 # COMPARISON OF WHAT RUNS ON THE PROTOTYPE (BAD ACTUALLY)
-quats = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, initial_quat=initial_quat) 
-quats2 = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, t_imu=t_imu, initial_quat=initial_quat) 
+#quats = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, initial_quat=initial_quat) 
+#quats2 = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, t_imu=t_imu, initial_quat=initial_quat) 
 
 # COMPARISON OF SIMPLE COMPLEMENTARY FILTER
 #quats = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, initial_quat=initial_quat) 
-#quats2 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, t_imu=np.array([0.10, 0.05, -0.13]), initial_quat=initial_quat) 
+quats = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, initial_quat=initial_quat) 
+quats2 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, t_imu=t_imu, initial_quat=initial_quat) 
+# quats3 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, initial_quat=initial_quat) 
+# quats4 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.1, autogain=0, gain_min=0, initial_quat=initial_quat) 
+# quats5 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.8, autogain=0, gain_min=0, initial_quat=initial_quat) 
 
 ## FIGURE 1
 
@@ -127,75 +131,99 @@ gt_roll = -gt_roll
 est_pitch = (est_euler[:, 1] + 180) % 360 - 180
 gt_pitch = (gt_euler[:, 1] + 180) % 360 - 180
 
-fig3, axs3 = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+# fig3, axs3 = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-# Plot yaw, pitch, roll (estimated and ground truth)
-axs3[0].plot(poses[:, 0], est_yaw, 'r', label='Yaw (est)')
-axs3[0].plot(poses[:, 0], est_pitch, 'g', label='Pitch (est)')
-axs3[0].plot(poses[:, 0], est_roll, 'b', label='Roll (est)')
-axs3[0].plot(poses[:, 0], gt_yaw, 'r--', label='Yaw (GT)')
-axs3[0].plot(poses[:, 0], gt_pitch, 'g--', label='Pitch (GT)')
-axs3[0].plot(poses[:, 0], gt_roll, 'b--', label='Roll (GT)')
-axs3[0].set_ylabel('Angle (deg)')
-axs3[0].set_title('Estimated vs Ground Truth Yaw, Pitch, Roll')
-axs3[0].legend()
-axs3[0].grid(True)
+# # Plot yaw, pitch, roll (estimated and ground truth)
+# axs3[0].plot(poses[:, 0], est_yaw, 'r', label='Yaw (est)')
+# axs3[0].plot(poses[:, 0], est_pitch, 'g', label='Pitch (est)')
+# axs3[0].plot(poses[:, 0], est_roll, 'b', label='Roll (est)')
+# axs3[0].plot(poses[:, 0], gt_yaw, 'r--', label='Yaw (GT)')
+# axs3[0].plot(poses[:, 0], gt_pitch, 'g--', label='Pitch (GT)')
+# axs3[0].plot(poses[:, 0], gt_roll, 'b--', label='Roll (GT)')
+# axs3[0].set_ylabel('Angle (deg)')
+# axs3[0].set_title('Estimated vs Ground Truth Yaw, Pitch, Roll')
+# axs3[0].legend()
+# axs3[0].grid(True)
 
-# Compute rotation error (angle between estimated and ground truth orientation)
-# Construct delta rotation, convert to angle-axis, and use the angle as the error
-rot_err_deg = np.zeros(len(est_quat))
-for i in range(len(est_quat)):
-    # Align quaternion signs
-    if np.dot(est_quat[i], gt_quat[i]) < 0:
-        q_est = -est_quat[i]
-    else:
+# # Compute rotation error (angle between estimated and ground truth orientation)
+# # Construct delta rotation, convert to angle-axis, and use the angle as the error
+# rot_err_deg = np.zeros(len(est_quat))
+# for i in range(len(est_quat)):
+#     # Align quaternion signs
+#     if np.dot(est_quat[i], gt_quat[i]) < 0:
+#         q_est = -est_quat[i]
+#     else:
+#         q_est = est_quat[i]
+#     q_gt = gt_quat[i]
+#     # Build delta rotation
+#     r_est = R.from_quat(q_est)
+#     r_gt = R.from_quat(q_gt)
+#     delta_rot = r_gt.inv() * r_est
+#     # Angle-axis: use the angle as the error
+#     rot_err_deg[i] = np.abs(delta_rot.magnitude()) * 180 / np.pi
+
+# # Set very small errors to zero for plotting clarity
+# rot_err_deg[rot_err_deg < 1e-8] = 0.0
+
+# # Compute rotation error for quats2 (angle between estimated and ground truth orientation)
+# est_quat2 = quats2[:, 1:5]
+# # Ensure quaternion sign consistency for error calculation and plotting
+# for i in range(len(est_quat2)):
+#     if np.dot(est_quat2[i], gt_quat[i]) < 0:
+#         est_quat2[i] = -est_quat2[i]
+
+# rot_err_deg2 = np.zeros(len(est_quat2))
+# for i in range(len(est_quat2)):
+#     # Align quaternion signs
+#     if np.dot(est_quat2[i], gt_quat[i]) < 0:
+#         q_est2 = -est_quat2[i]
+#     else:
+#         q_est2 = est_quat2[i]
+#     q_gt = gt_quat[i]
+#     # Build delta rotation
+#     r_est2 = R.from_quat(q_est2)
+#     r_gt = R.from_quat(q_gt)
+#     delta_rot2 = r_gt.inv() * r_est2
+#     # Angle-axis: use the angle as the error
+#     rot_err_deg2[i] = np.abs(delta_rot2.magnitude()) * 180 / np.pi
+
+# # Set very small errors to zero for plotting clarity
+# rot_err_deg2[rot_err_deg2 < 1e-8] = 0.0
+
+# List of all filter results and their labels
+quats_list = [
+    (quats, 'alpha=0.05 (raw)'),
+    (quats2, 'alpha=0.05 (compensated)'),
+    # (quats3, 'alpha=0.05'),
+    # (quats4, 'alpha=0.1'),
+    # (quats5, 'alpha=0.8'),
+]
+
+# Prepare colors for plotting
+colors = ['b', 'g', 'r', 'c', 'm', 'y']
+
+# Plot rotation errors for all filter results in a single plot
+plt.figure(figsize=(12, 5))
+for idx, (q, label) in enumerate(quats_list):
+    est_quat = q[:, 1:5]
+    for i in range(len(est_quat)):
+        if np.dot(est_quat[i], gt_quat[i]) < 0:
+            est_quat[i] = -est_quat[i]
+    rot_err_deg = np.zeros(len(est_quat))
+    for i in range(len(est_quat)):
         q_est = est_quat[i]
-    q_gt = gt_quat[i]
-    # Build delta rotation
-    r_est = R.from_quat(q_est)
-    r_gt = R.from_quat(q_gt)
-    delta_rot = r_gt.inv() * r_est
-    # Angle-axis: use the angle as the error
-    rot_err_deg[i] = np.abs(delta_rot.magnitude()) * 180 / np.pi
+        q_gt = gt_quat[i]
+        r_est = R.from_quat(q_est)
+        r_gt = R.from_quat(q_gt)
+        delta_rot = r_gt.inv() * r_est
+        rot_err_deg[i] = np.abs(delta_rot.magnitude()) * 180 / np.pi
+    rot_err_deg[rot_err_deg < 1e-8] = 0.0
+    plt.plot(poses[:, 0], rot_err_deg, color=colors[idx], label=f'Error ({label})')
 
-# Set very small errors to zero for plotting clarity
-rot_err_deg[rot_err_deg < 1e-8] = 0.0
-
-# Compute rotation error for quats2 (angle between estimated and ground truth orientation)
-est_quat2 = quats2[:, 1:5]
-# Ensure quaternion sign consistency for error calculation and plotting
-for i in range(len(est_quat2)):
-    if np.dot(est_quat2[i], gt_quat[i]) < 0:
-        est_quat2[i] = -est_quat2[i]
-
-rot_err_deg2 = np.zeros(len(est_quat2))
-for i in range(len(est_quat2)):
-    # Align quaternion signs
-    if np.dot(est_quat2[i], gt_quat[i]) < 0:
-        q_est2 = -est_quat2[i]
-    else:
-        q_est2 = est_quat2[i]
-    q_gt = gt_quat[i]
-    # Build delta rotation
-    r_est2 = R.from_quat(q_est2)
-    r_gt = R.from_quat(q_gt)
-    delta_rot2 = r_gt.inv() * r_est2
-    # Angle-axis: use the angle as the error
-    rot_err_deg2[i] = np.abs(delta_rot2.magnitude()) * 180 / np.pi
-
-# Set very small errors to zero for plotting clarity
-rot_err_deg2[rot_err_deg2 < 1e-8] = 0.0
-
-# Plot both errors in the lower subplot
-axs3[1].plot(poses[:, 0], rot_err_deg, 'b', label='Rotation Error (no compensation)')
-axs3[1].plot(poses[:, 0], rot_err_deg2, 'r--', label='Rotation Error (with compensation)')
-axs3[1].plot(poses[:, 0], rot_err_deg - rot_err_deg2, 'g-.', label='Improvement')
-axs3[1].set_xlabel('Time (s)')
-axs3[1].set_ylabel('Error (deg)')
-axs3[1].set_title('Rotation Error (Angle between estimated and ground truth)')
-axs3[1].legend()
-axs3[1].grid(True)
-
-# Show all the figures
+plt.xlabel('Time (s)')
+plt.ylabel('Error (deg)')
+plt.title('Rotation Error (Angle between estimated and ground truth)')
+plt.legend()
+plt.grid(True)
 plt.tight_layout()
 plt.show()

@@ -107,7 +107,7 @@ def generate_trochoid(omega_vec, R_ball, offset_vec):
     positions = np.zeros((N, 3))
     for i in range(1, N):
         # The contact point is always at -R_ball * (current z-axis in world frame)
-        z_axis_world = np.array([0,0,1])#rotations[i-1].apply([0, 0, 1])
+        z_axis_world = np.array([0,0,-1])#rotations[i-1].apply([0, 0, 1])
         r_contact = -R_ball * z_axis_world
         omega = omega_vec[i-1, 1:4]
         v_center = np.cross(omega, r_contact)
