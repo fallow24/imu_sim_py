@@ -1,3 +1,4 @@
+from scipy.spatial.transform import Rotation as Rot
 import numpy as np
 
 def generate_trochoid_forward(duration, fs, R, r, omega):
@@ -74,63 +75,58 @@ def generate_trochoid_curved(duration, fs, R, r, omega, turn_period=5.0, turn_an
     poses = np.column_stack((timestamps, x, y, z, yaw_deg, pitch, roll))
     return poses
 
-def generate_trochoid_curved_extr(duration, fs, R, offset_vec, omega, turn_period=5.0, turn_angle_deg=45):
+def generate_trochoid(omega_vec, R_ball, offset_vec):
     """
-    Generates a trochoid trajectory for a ball rolling on a floor, but with periodic left/right turns,
+    Generates a trochoid trajectory for a ball rolling on a floor, with arbitrary angular velocity at each time step,
     and allows for an arbitrary 3D offset of the IMU sensor from the ball center.
     Parameters:
-        duration: Duration in seconds.
-        fs: Samples per second.
-        R: Radius of the rolling ball.
+        omega_vec: (N, 4) numpy array, first column is timestamp, next three columns are angular velocity vector [wx, wy, wz] at each time step (rad/s).
+        R_ball: Radius of the rolling ball.
         offset_vec: 3D numpy array, offset of the IMU from the ball center [x, y, z] in the ball's local frame.
-        omega: Rolling angular velocity (rad/s).
-        turn_period: Period (s) of a full left-right-left turn cycle.
-        turn_angle_deg: Maximum yaw angle left/right (degrees).
     Returns:
         poses: [timestamp, x, y, z, yaw, pitch, roll]
     """
-    N = int(duration * fs)
-    timestamps = np.linspace(0, duration, N)
+    omega_vec = np.asarray(omega_vec)
+    assert omega_vec.shape[1] == 4, "omega_vec must have shape (N, 4): [timestamp, wx, wy, wz]"
+    timestamps = omega_vec[:, 0]
+    N = len(timestamps)
+    dt = np.diff(timestamps, prepend=timestamps[0])
 
-    # Yaw oscillates sinusoidally to simulate left/right turns
-    turn_angle_rad = np.deg2rad(turn_angle_deg)
-    yaw = turn_angle_rad * np.sin(2 * np.pi * timestamps / turn_period)  # radians
-
-    # Integrate yaw rate to get heading at each time step
-    heading = np.cumsum(np.gradient(yaw, timestamps)) / fs  # radians
-
-    # Trochoid equations for the ball center (no offset)
-    theta = omega * timestamps
-    x = np.zeros(N)
-    y = np.zeros(N)
-    for i in range(1, N):
-        dx = (R * (theta[i] - theta[i-1])) * np.cos(heading[i])
-        dy = (R * (theta[i] - theta[i-1])) * np.sin(heading[i])
-        x[i] = x[i-1] + dx
-        y[i] = y[i-1] + dy
-    z = R * np.ones(N)
-
-    # Now apply the full 3D offset by rotating offset_vec at each time step
-    imu_x = np.zeros(N)
-    imu_y = np.zeros(N)
-    imu_z = np.zeros(N)
+    rotations = []
+    rot = Rot.identity()
     for i in range(N):
-        # Orientation: yaw follows the heading, pitch follows theta, roll is zero
-        yaw_i = heading[i]
-        pitch_i = theta[i]
-        roll_i = 0.0
-        # Rotation: first roll, then pitch, then yaw (ZYX)
-        rot = R.from_euler('zyx', [yaw_i, pitch_i, roll_i])
-        offset_global = rot.apply(offset_vec)
-        imu_x[i] = x[i] + offset_global[0]
-        imu_y[i] = y[i] + offset_global[1]
-        imu_z[i] = z[i] + offset_global[2]
+        omega = omega_vec[i, 1:4]
+        angle = np.linalg.norm(omega) * dt[i]
+        if angle > 1e-12:
+            axis = omega / np.linalg.norm(omega)
+            dR = Rot.from_rotvec(axis * angle)
+            rot = rot * dR
+        rotations.append(rot)
 
-    yaw_deg = np.rad2deg(heading)
-    pitch = np.rad2deg(theta) % 360
-    roll = np.zeros_like(theta)
+    # Integrate translational velocity (rolling constraint)
+    positions = np.zeros((N, 3))
+    for i in range(1, N):
+        # The contact point is always at -R_ball * (current z-axis in world frame)
+        z_axis_world = np.array([0,0,1])#rotations[i-1].apply([0, 0, 1])
+        r_contact = -R_ball * z_axis_world
+        omega = omega_vec[i-1, 1:4]
+        v_center = np.cross(omega, r_contact)
+        positions[i] = positions[i-1] + v_center * dt[i]
 
-    poses = np.column_stack((timestamps, imu_x, imu_y, imu_z, yaw_deg, pitch, roll))
+    # Compute IMU position by applying offset_vec in local frame to each orientation
+    imu_positions = np.zeros((N, 3))
+    yaws = np.zeros(N)
+    pitches = np.zeros(N)
+    rolls = np.zeros(N)
+    for i in range(N):
+        offset_global = rotations[i].apply(offset_vec)
+        imu_positions[i] = positions[i] + offset_global
+        yaw, pitch, roll = rotations[i].as_euler('zyx', degrees=True)
+        yaws[i] = yaw
+        pitches[i] = pitch
+        rolls[i] = roll
+
+    poses = np.column_stack((timestamps, imu_positions[:,0], imu_positions[:,1], imu_positions[:,2], yaws, pitches, rolls))
     return poses
 
 def generate_rotating_disc(duration, fs, imu_offset, omega):

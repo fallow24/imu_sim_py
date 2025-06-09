@@ -13,29 +13,40 @@ from bag2pose import load_rosbag_poses
 
 ## Setup simulation
 
-# Example poses: [timestamp, x, y, z, yaw, pitch, roll]
-duration = 10  # seconds
-fs = 125    # Hz (sampling time)     
+duration = 15  # seconds
+fs = 125    # Hz (sampling time) 
+R_sphere = 0.145
+t_imu = np.array([0.13, 0.13, 0.02])
 
 # SOME EXAMPLE TRAJECTORIES
+# Example poses: [timestamp, x, y, z, yaw, pitch, roll]
 #poses = trj.generate_lift_motion(duration, fs, 10)
 #poses = trj.generate_rotating_disc(duration, fs, 0.13, 6)  # Generate a rotating disc trajectory
 #poses = trj.generate_trochoid_curved(duration, fs, 0.145, 0.13, 6, turn_period=2, turn_angle_deg=100)
 #poses = load_rosbag_poses("/home/fabi/Documents/Bagfiles/Test_accel_2025-05-23.bag", "/lkf/pose", tend=45)
-poses = trj.generate_trochoid_forward(duration, fs, 0.145, 0.13, 6)  # Generate a trochoid trajectory
+
+# Create a sin wave as np array with duration and sampling frequency fs
+omega_input = np.zeros((fs * duration, 4))  # [timestamp, wx, wy, wz]
+omega_input[:, 0] = np.linspace(0, duration, fs * duration)  # timestamps
+omega_input[:, 1] = np.sin(np.linspace(0, 2 * np.pi * 1.5, fs * duration)) * 0.5 + 0.5 # wx
+omega_input[:, 2] = np.sin(np.linspace(0, 2 * np.pi * 1, fs * duration)) * 2 + 2  # wy
+omega_input[:, 3] = np.sin(np.linspace(0, 2 * np.pi * 0.8, fs * duration)) * 0.7 - 1 # wz
+
+#poses = trj.generate_trochoid_forward(duration, fs, 0.145, 0.13, 6)  # Generate a trochoid trajectory
+poses = trj.generate_trochoid(omega_vec=omega_input, R_ball=R_sphere, offset_vec=t_imu)
 initial_quat = R.from_euler('zyx', poses[0, 4:7], degrees=True).as_quat()  # [x, y, z, w]
 
 #acc = accel.gravity_readings(poses)
 acc = accel.readings(poses, random_seed=42)
-gyr = gyro.readings(poses, random_seed=43, bias=np.array([0.01, -0.02, 0.03]))
+gyr = gyro.readings(poses, random_seed=43, bias=np.array([0.01, -0.02, 0.015]))
 
 # COMPARISON OF WHAT RUNS ON THE PROTOTYPE (BAD ACTUALLY)
-# quats = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, initial_quat=initial_quat) 
-# quats2 = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, t_imu=np.array([0, 0, 0.13]), initial_quat=initial_quat) 
+quats = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, initial_quat=initial_quat) 
+quats2 = filt.imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.2, gain_min=0.1, t_imu=t_imu, initial_quat=initial_quat) 
 
 # COMPARISON OF SIMPLE COMPLEMENTARY FILTER
-quats = filt.imujasper(acc, gyr, gain=0.0, alpha=0.02, autogain=0, gain_min=0, initial_quat=initial_quat) 
-quats2 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.02, autogain=0, gain_min=0, t_imu=np.array([0,0,0.13]), initial_quat=initial_quat) 
+#quats = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, initial_quat=initial_quat) 
+#quats2 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.05, autogain=0, gain_min=0, t_imu=np.array([0.10, 0.05, -0.13]), initial_quat=initial_quat) 
 
 ## FIGURE 1
 
@@ -43,13 +54,15 @@ quats2 = filt.imujasper(acc, gyr, gain=0.0, alpha=0.02, autogain=0, gain_min=0, 
 fig, axs = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 timestamps = acc[:, 0]  # Use timestamps from acc (or gyr, both are same as poses)
 
+
 # Accelerometer plot
 g = 9.80665
+acc = accel.movement_readings(poses)
 axs[0].plot(timestamps, acc[:, 1]/g, label='Accel X')
 axs[0].plot(timestamps, acc[:, 2]/g, label='Accel Y')
 axs[0].plot(timestamps, acc[:, 3]/g, label='Accel Z')
 axs[0].set_ylabel('Acceleration (g)')
-axs[0].set_title('Simulated Accelerometer Readings (Gravity + Movement)')
+axs[0].set_title('Simulated Accelerometer Readings (ONLY Movement)')
 axs[0].legend()
 axs[0].grid(True)
 

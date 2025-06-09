@@ -144,12 +144,11 @@ def imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.0, gain_min=0.02, t_imu
             self.alpha = np.sqrt(c * c - 4 * c + 3) + c - 1
 
     lowpass = Lowpass()
-    lowpass.set_freq(10, 125)
-    lastw = np.sqrt(gyr[0, 1]**2 + gyr[0, 2]**2 + gyr[0, 3]**2)
+    lowpass.set_freq(5, 125)
     lastgx = gyr[0, 1]
     lastgy = gyr[0, 2]
     lastgz = gyr[0, 3]
-    ur = t_imu if t_imu is not None else np.array([0.0, 0.0, 0.0], dtype=np.float64)
+    ur = -t_imu if t_imu is not None else np.array([0.0, 0.0, 0.0], dtype=np.float64)
     
     # To be used for: Euler acceleration and translational acceleration (due to ball movement)
     r = np.sqrt(t_imu[0] * t_imu[0] + t_imu[1] * t_imu[1] + t_imu[2] * t_imu[2]) if t_imu is not None else 0.0
@@ -173,8 +172,6 @@ def imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.0, gain_min=0.02, t_imu
 
         # Compensate centripetal and tangential acceleration
         if t_imu is not None:
-            w = np.sqrt(gx * gx + gy * gy + gz * gz)
-            wdot_noise = (w - lastw) / dt
             gdot_x = (gx - lastgx) / dt
             gdot_y = (gy - lastgy) / dt
             gdot_z = (gz - lastgz) / dt
@@ -182,13 +179,17 @@ def imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.0, gain_min=0.02, t_imu
             lastgx = gx
             lastgy = gy
             lastgz = gz 
-            lastw = w
-            wdot = lowpass.filter(wdot_noise)
+            wdot = lowpass.filter(gdot)
 
             uomega = np.array([gx, gy, gz]) / np.linalg.norm(np.array([gx, gy, gz])) if np.linalg.norm(np.array([gx, gy, gz])) > 1e-8 else np.array([0.0, 0.0, 0.0])
             utheta = np.cross(uomega, ur)
-            g_cross_r = np.cross(gyr[i, 1:4], t_imu) 
-            comp_centripetal = np.cross(gyr[i, 1:4], g_cross_r)
+            g_cross_r = np.cross(gyr[i, 1:4], ur) 
+            
+            # Use current quaternion to rotate the global (0,0,-1) vector to the local frame
+            g_rotated = invRot @ np.array([0, 0, 1])
+            g_rotated = g_rotated / np.linalg.norm(g_rotated) if np.linalg.norm(g_rotated) > 1e-8 else np.array([0.0, 0.0, 0.0])
+            
+            comp_centripetal = -Rsphere * np.cross(wdot, g_rotated) + np.cross(wdot, ur) + np.cross(gyr[i, 1:4], g_cross_r)
 
             # Compensation terms
 
@@ -196,9 +197,9 @@ def imujasper(acc, gyr, gain=0.2, alpha=0.02, autogain=0.0, gain_min=0.02, t_imu
             comp_term_y = -comp_centripetal[1]
             comp_term_z = -comp_centripetal[2]
 
-            comp_x.append(comp_term_x)
-            comp_y.append(comp_term_y)
-            comp_z.append(comp_term_z)
+            comp_x.append(comp_term_x / 9.80665)
+            comp_y.append(comp_term_y / 9.80665)
+            comp_z.append(comp_term_z / 9.80665)
 
             # Compensate centripetal 
             ax = ax - comp_term_x
